@@ -1,3 +1,5 @@
+import base64
+import binascii
 from pathlib import Path
 from urllib.parse import quote_plus
 
@@ -27,12 +29,36 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 30
 
+    # File storage and encryption
+    encryption_key: str
+    max_upload_mb: int = 20
+    storage_dir: Path = PROJECT_ROOT / "storage"
+
     @field_validator("jwt_secret_key")
     @classmethod
     def secret_must_be_long_enough(cls, value: str) -> str:
         if len(value) < 32:
             raise ValueError("JWT_SECRET_KEY must be at least 32 characters")
         return value
+
+    @field_validator("encryption_key")
+    @classmethod
+    def key_must_be_32_bytes(cls, value: str) -> str:
+        try:
+            raw = base64.urlsafe_b64decode(value.encode())
+        except (binascii.Error, ValueError) as exc:
+            raise ValueError("ENCRYPTION_KEY must be url-safe base64") from exc
+        if len(raw) != 32:
+            raise ValueError("ENCRYPTION_KEY must decode to exactly 32 bytes")
+        return value
+
+    @property
+    def encryption_key_bytes(self) -> bytes:
+        return base64.urlsafe_b64decode(self.encryption_key.encode())
+
+    @property
+    def max_upload_bytes(self) -> int:
+        return self.max_upload_mb * 1024 * 1024
 
     @property
     def database_url(self) -> str:
