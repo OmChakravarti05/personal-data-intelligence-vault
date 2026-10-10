@@ -1,0 +1,66 @@
+from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordRequestForm
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
+from app.api.deps import get_current_user
+from app.core.config import settings
+from app.core.security import create_access_token, hash_password, verify_password
+from app.db.session import get_db
+from app.models import User
+from app.schemas.user import Token, UserCreate, UserRead
+
+router = APIRouter(prefix="/auth", tags=["auth"])
+
+# Verified against when the email is unknown, so login takes about the same
+# time whether or not the account exists.
+_DUMMY_HASH = hash_password("dummy-password-for-timing")
+
+
+@router.post("/register", response_model=UserRead, status_code=status.HTTP_201_CREATED)
+def register(payload: UserCreate, db: Session = Depends(get_db)) -> User:
+    email = payload.email.lower()
+    if db.scalar(select(User).where(User.email == email)):
+        raise HTTPException(status.HTTP_409_CONFLICT, "Email already registered")
+
+    user = User(
+        email=email,
+        full_name=payload.full_name.strip(),
+        hashed_password=hash_password(payload.password),
+    )
+    db.add(user)
+    try:
+        db.commit()
+    except IntegrityError:  # two simultaneous signups with the same email
+        db.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, "Email already registered")
+    db.refresh(user)
+    return user
+
+
+@router.post("/login", response_model=Token)
+def login(
+    form: OAuth2PasswordRequestForm = Depends(),
+    db: Session = Depends(get_db),
+) -> Token:
+    # OAuth2 forms call the field "username"; in our app it holds the email.
+    user = db.scalar(select(User).where(User.email == form.username.lower()))
+    password_ok = verify_password(
+        form.password, user.hashed_password if user else _DUMMY_HASH
+    )
+    if user is None or not password_ok or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return Token(
+        access_token=create_access_token(user.id),
+        expires_in=settings.access_token_expire_minutes * 60,
+    )
+
+
+@router.get("/me", response_model=UserRead)
+def read_me(current_user: User = Depends(get_current_user)) -> User:
+    return current_user

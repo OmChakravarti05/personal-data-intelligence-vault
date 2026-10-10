@@ -1,6 +1,7 @@
 from pathlib import Path
 from urllib.parse import quote_plus
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # backend/app/core/config.py -> parents[3] is the project root
@@ -14,11 +15,24 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
+    # Database
     postgres_user: str
     postgres_password: str
     postgres_db: str
     postgres_port: int = 5433
     postgres_host: str = "127.0.0.1"
+
+    # Authentication
+    jwt_secret_key: str
+    jwt_algorithm: str = "HS256"
+    access_token_expire_minutes: int = 30
+
+    @field_validator("jwt_secret_key")
+    @classmethod
+    def secret_must_be_long_enough(cls, value: str) -> str:
+        if len(value) < 32:
+            raise ValueError("JWT_SECRET_KEY must be at least 32 characters")
+        return value
 
     @property
     def database_url(self) -> str:
