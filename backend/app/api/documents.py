@@ -14,6 +14,7 @@ from fastapi import (
     UploadFile,
     status,
 )
+from langchain_core.embeddings import Embeddings
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -24,8 +25,10 @@ from app.models import Document, DocumentStatus, User
 from app.repositories import documents as repo
 from app.schemas.document import DocumentList, DocumentRead
 from app.services.document_parser import ParseError, parse_document
+from app.services.embeddings import get_embeddings
 from app.services.encryption import DecryptionError
 from app.services.file_validation import UploadValidationError, validate_upload
+from app.services.ingestion import IngestionBusy, ingest_document
 from app.services.storage import (
     StorageBackend,
     StorageError,
@@ -105,7 +108,7 @@ def upload_document(
     )
 
     # Extraction check. Status stays "uploaded" on success: only the full
-    # ingestion pipeline (Phase 6) is allowed to mark a document "indexed".
+    # ingestion pipeline is allowed to mark a document "indexed".
     try:
         document.page_count = parse_document(data, extension).page_count
     except ParseError as exc:
@@ -208,21 +211,15 @@ def reprocess_document(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     storage: StorageBackend = Depends(get_storage),
+    embeddings: Embeddings = Depends(get_embeddings),
 ) -> Document:
-    """Re-run text extraction. Full re-indexing is added with the Phase 6 pipeline."""
-    document = _get_owned_or_404(db, current_user, document_id)
-    if document.status == DocumentStatus.PROCESSING:
-        raise HTTPException(status.HTTP_409_CONFLICT, "Document is already processing")
+    """Run the full ingestion pipeline again: extract, scan, chunk, embed, store.
 
-    data = _read_stored_file(storage, document)
-    extension = "." + document.original_filename.rsplit(".", 1)[-1]
+    The document is marked "indexed" only if every step succeeds. A failure
+    leaves it "failed" with a safe message.
+    """
+    document = _get_owned_or_404(db, current_user, document_id)
     try:
-        document.page_count = parse_document(data, extension).page_count
-        document.status = DocumentStatus.UPLOADED
-        document.error_message = None
-    except ParseError as exc:
-        document.status = DocumentStatus.FAILED
-        document.error_message = str(exc)
-    db.commit()
-    db.refresh(document)
-    return document
+        return ingest_document(db, storage, embeddings, document, force=True)
+    except IngestionBusy:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Document is already being processed")

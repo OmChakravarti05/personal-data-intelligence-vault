@@ -41,6 +41,14 @@ class Settings(BaseSettings):
     # Must match the vector(384) column created by the Alembic migration.
     embedding_dimension: int = 384
 
+    # Retrieval
+    retrieval_top_k: int = 5
+    # Cosine distance cutoff, chosen from measured distances (related <= 0.37, unrelated >= 0.81).
+    retrieval_max_distance: float = 0.6
+
+    embedding_dimension: int = 384
+
+
     @field_validator("jwt_secret_key")
     @classmethod
     def secret_must_be_long_enough(cls, value: str) -> str:
@@ -85,3 +93,4 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+

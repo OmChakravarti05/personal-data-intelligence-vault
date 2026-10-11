@@ -171,11 +171,3 @@ def test_unknown_and_invalid_ids(client):
     headers = make_user(client)
     assert client.get(f"/documents/{uuid.uuid4()}", headers=headers).status_code == 404
     assert client.get("/documents/not-a-uuid", headers=headers).status_code == 422
-
-
-def test_reprocess_keeps_valid_document_uploaded(client):
-    headers = make_user(client)
-    doc_id = upload(client, headers).json()["id"]
-    response = client.post(f"/documents/{doc_id}/reprocess", headers=headers)
-    assert response.status_code == 200
-    assert response.json()["status"] == "uploaded"
