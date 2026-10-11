@@ -3,7 +3,7 @@ import binascii
 from pathlib import Path
 from urllib.parse import quote_plus
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # backend/app/core/config.py -> parents[3] is the project root
@@ -34,6 +34,13 @@ class Settings(BaseSettings):
     max_upload_mb: int = 20
     storage_dir: Path = PROJECT_ROOT / "storage"
 
+    # Chunking and embeddings
+    chunk_size: int = 1000
+    chunk_overlap: int = 150
+    embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
+    # Must match the vector(384) column created by the Alembic migration.
+    embedding_dimension: int = 384
+
     @field_validator("jwt_secret_key")
     @classmethod
     def secret_must_be_long_enough(cls, value: str) -> str:
@@ -51,6 +58,14 @@ class Settings(BaseSettings):
         if len(raw) != 32:
             raise ValueError("ENCRYPTION_KEY must decode to exactly 32 bytes")
         return value
+
+    @model_validator(mode="after")
+    def chunk_settings_must_be_consistent(self) -> "Settings":
+        if self.chunk_size < 100:
+            raise ValueError("CHUNK_SIZE must be at least 100")
+        if not 0 <= self.chunk_overlap < self.chunk_size:
+            raise ValueError("CHUNK_OVERLAP must be at least 0 and below CHUNK_SIZE")
+        return self
 
     @property
     def encryption_key_bytes(self) -> bytes:
