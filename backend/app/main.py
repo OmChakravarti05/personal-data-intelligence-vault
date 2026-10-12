@@ -17,3 +17,6 @@ def health() -> dict[str, str]:
 
 from app.api import chat
 app.include_router(chat.router)
+
+from app.api import stats
+app.include_router(stats.router)
