@@ -45,9 +45,12 @@ class Settings(BaseSettings):
     retrieval_top_k: int = 5
     # Cosine distance cutoff, chosen from measured distances (related <= 0.37, unrelated >= 0.81).
     retrieval_max_distance: float = 0.6
-
     embedding_dimension: int = 384
 
+    llm_model: str = "llama3.2:3b"
+    ollama_base_url: str = "http://localhost:11434"
+    llm_temperature: float = 0.1
+    llm_timeout_seconds: int = 120
 
     @field_validator("jwt_secret_key")
     @classmethod

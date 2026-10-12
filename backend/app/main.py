@@ -12,3 +12,8 @@ app.include_router(search.router)
 @app.get("/health", tags=["system"])
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+
+from app.api import chat
+app.include_router(chat.router)
