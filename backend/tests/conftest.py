@@ -9,6 +9,7 @@ from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
 from app.services.encryption import FileEncryptor
+from app.services.indexing import get_indexer
 from app.services.storage import LocalEncryptedStorage, get_storage
 
 # Same server as development, but a separate database.
@@ -66,6 +67,8 @@ def client(engine, storage_dir):
 
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_storage] = lambda: test_storage
+    # Uploads do not start background indexing unless a test asks for it.
+    app.dependency_overrides[get_indexer] = lambda: (lambda document_id: None)
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()

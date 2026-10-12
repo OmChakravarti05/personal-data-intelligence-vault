@@ -1,11 +1,18 @@
 import sys
 from pathlib import Path
 
+# Make the backend package importable when run from the project root
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
-import app.models  # noqa: F401  (registers the models)
-from app.db.base import Base
-from sqlalchemy.orm import configure_mappers
+from sqlalchemy import text
 
-configure_mappers()
-print(sorted(Base.metadata.tables))
+from app.db.session import engine
+
+with engine.connect() as conn:
+    print(conn.execute(text("SELECT version()")).scalar())
+    print(
+        "pgvector:",
+        conn.execute(
+            text("SELECT extversion FROM pg_extension WHERE extname = 'vector'")
+        ).scalar(),
+    )

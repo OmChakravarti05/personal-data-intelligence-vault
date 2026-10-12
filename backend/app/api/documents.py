@@ -6,6 +6,7 @@ from urllib.parse import quote
 
 from fastapi import (
     APIRouter,
+    BackgroundTasks,
     Depends,
     File,
     HTTPException,
@@ -28,6 +29,7 @@ from app.services.document_parser import ParseError, parse_document
 from app.services.embeddings import get_embeddings
 from app.services.encryption import DecryptionError
 from app.services.file_validation import UploadValidationError, validate_upload
+from app.services.indexing import Indexer, get_indexer
 from app.services.ingestion import IngestionBusy, ingest_document
 from app.services.storage import (
     StorageBackend,
@@ -82,10 +84,12 @@ def _read_stored_file(storage: StorageBackend, document: Document) -> bytes:
 
 @router.post("/upload", response_model=DocumentRead, status_code=status.HTTP_201_CREATED)
 def upload_document(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     storage: StorageBackend = Depends(get_storage),
+    indexer: Indexer = Depends(get_indexer),
 ) -> Document:
     data = _read_limited(file)
     try:
@@ -107,8 +111,8 @@ def upload_document(
         file_hash=file_hash,
     )
 
-    # Extraction check. Status stays "uploaded" on success: only the full
-    # ingestion pipeline is allowed to mark a document "indexed".
+    # Quick extraction check. The status becomes "indexed" only when the full
+    # ingestion pipeline finishes in the background job below.
     try:
         document.page_count = parse_document(data, extension).page_count
     except ParseError as exc:
@@ -128,6 +132,10 @@ def upload_document(
         storage.delete(storage_id)  # never leave an orphaned encrypted file
         raise
     db.refresh(document)
+
+    # Readable files are indexed after the response is sent.
+    if document.status == DocumentStatus.UPLOADED:
+        background_tasks.add_task(indexer, document.id)
     return document
 
 
