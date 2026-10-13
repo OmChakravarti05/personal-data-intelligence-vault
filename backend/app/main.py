@@ -26,3 +26,6 @@ app.include_router(audit_log.router)
 
 from app.api import shares
 app.include_router(shares.router)
+
+import app.api.system as system
+app.include_router(system.router)

@@ -150,3 +150,7 @@ def shared_with_me(token: str) -> list[dict]:
 
 def revoke_share(token: str, share_id: str) -> None:
     request("DELETE", f"/shares/{share_id}", token=token)
+
+
+def system_info(token: str) -> dict:
+    return request("GET", "/system/info", token=token).json()    
