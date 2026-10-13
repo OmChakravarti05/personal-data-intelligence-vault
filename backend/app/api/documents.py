@@ -25,6 +25,7 @@ from app.db.session import get_db
 from app.models import Document, DocumentStatus, User
 from app.repositories import documents as repo
 from app.schemas.document import DocumentList, DocumentRead
+from app.services.audit import RESULT_FAILURE, audit
 from app.services.document_parser import ParseError, parse_document
 from app.services.embeddings import get_embeddings
 from app.services.encryption import DecryptionError
@@ -95,10 +96,24 @@ def upload_document(
     try:
         name, extension, mime = validate_upload(file.filename, file.content_type, data)
     except UploadValidationError as exc:
+        audit(
+            db,
+            event_type="document.upload",
+            result=RESULT_FAILURE,
+            user_id=current_user.id,
+            metadata={"reason": str(exc)},
+        )
         raise HTTPException(exc.status_code, str(exc))
 
     file_hash = hashlib.sha256(data).hexdigest()
     if repo.find_by_hash(db, current_user.id, file_hash):
+        audit(
+            db,
+            event_type="document.upload",
+            result=RESULT_FAILURE,
+            user_id=current_user.id,
+            metadata={"reason": "duplicate"},
+        )
         raise HTTPException(status.HTTP_409_CONFLICT, "You have already uploaded this file")
 
     storage_id = new_storage_id()
@@ -132,6 +147,18 @@ def upload_document(
         storage.delete(storage_id)  # never leave an orphaned encrypted file
         raise
     db.refresh(document)
+    audit(
+        db,
+        event_type="document.upload",
+        user_id=current_user.id,
+        resource_type="document",
+        resource_id=document.id,
+        metadata={
+            "filename": document.original_filename,
+            "size_bytes": document.size_bytes,
+            "status": document.status,
+        },
+    )
 
     # Readable files are indexed after the response is sent.
     if document.status == DocumentStatus.UPLOADED:
@@ -183,6 +210,13 @@ def download_document(
 ) -> Response:
     document = _get_owned_or_404(db, current_user, document_id)
     data = _read_stored_file(storage, document)
+    audit(
+        db,
+        event_type="document.download",
+        user_id=current_user.id,
+        resource_type="document",
+        resource_id=document.id,
+    )
     return Response(
         content=data,
         media_type=document.mime_type,
@@ -204,8 +238,18 @@ def delete_document(
 ) -> Response:
     document = _get_owned_or_404(db, current_user, document_id)
     storage_id = document.storage_id
+    deleted_id = document.id
+    filename = document.original_filename
     db.delete(document)  # chunks and PII findings are removed by ON DELETE CASCADE
     db.commit()
+    audit(
+        db,
+        event_type="document.delete",
+        user_id=current_user.id,
+        resource_type="document",
+        resource_id=deleted_id,
+        metadata={"filename": filename},
+    )
     try:
         storage.delete(storage_id)
     except OSError:

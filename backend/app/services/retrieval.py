@@ -6,10 +6,10 @@ from langchain_core.documents import Document as LCDocument
 from langchain_core.embeddings import Embeddings
 from langchain_core.retrievers import BaseRetriever
 from pydantic import ConfigDict, Field
-from sqlalchemy import select, text
+from sqlalchemy import or_, select, text
 from sqlalchemy.orm import Session
 
-from app.models import Document, DocumentChunk, DocumentStatus
+from app.models import Document, DocumentChunk, DocumentPermission, DocumentStatus
 
 
 @dataclass(frozen=True)
@@ -33,16 +33,23 @@ def search_chunks(
     max_distance: float | None = None,
     document_ids: list[uuid.UUID] | None = None,
 ) -> list[SearchHit]:
-    """Semantic search over ONE user's indexed documents.
+    """Semantic search over the documents ONE user may read.
 
-    The owner filter is part of the SQL query, so other users' chunks are never
-    ranked, loaded or returned. Nothing here depends on a prompt for security.
+    `owner_id` is the searching user. They may read indexed documents they own,
+    plus indexed documents another user has shared with them (read permission).
+    The access rule is part of the SQL query, so other chunks are never ranked,
+    loaded or returned. Nothing here depends on a prompt for security.
     """
     if not query.strip():
         return []
 
     query_vector = embeddings.embed_query(query)
     distance = DocumentChunk.embedding.cosine_distance(query_vector)
+
+    shared_with_user = select(DocumentPermission.document_id).where(
+        DocumentPermission.grantee_id == owner_id
+    )
+    can_read = or_(Document.owner_id == owner_id, Document.id.in_(shared_with_user))
 
     statement = (
         select(
@@ -56,8 +63,8 @@ def search_chunks(
         )
         .join(Document, Document.id == DocumentChunk.document_id)
         .where(
-            DocumentChunk.owner_id == owner_id,
-            Document.owner_id == owner_id,
+            can_read,
+            DocumentChunk.owner_id == Document.owner_id,
             Document.status == DocumentStatus.INDEXED,
         )
     )
@@ -68,7 +75,7 @@ def search_chunks(
     statement = statement.order_by(distance).limit(top_k)
 
     # The HNSW index applies filters after its approximate scan. Iterative scan
-    # keeps scanning until enough rows pass the owner filter, so results are not
+    # keeps scanning until enough rows pass the access filter, so results are not
     # starved when many users share the table.
     db.execute(text("SET LOCAL hnsw.iterative_scan = strict_order"))
     rows = db.execute(statement).all()
@@ -88,7 +95,7 @@ def search_chunks(
 
 
 class UserScopedRetriever(BaseRetriever):
-    """LangChain retriever that can only ever see one user's indexed documents."""
+    """LangChain retriever that can only ever see documents one user may read."""
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 

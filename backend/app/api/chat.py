@@ -16,6 +16,7 @@ from app.schemas.chat import (
     ConversationRead,
     SourceRead,
 )
+from app.services.audit import RESULT_FAILURE, audit
 from app.services.embeddings import get_embeddings
 from app.services.llm import LLMUnavailable, get_llm
 from app.services.rag import answer_question
@@ -56,6 +57,13 @@ def ask(
             db, current_user.id, embeddings, llm, payload.question, history=history
         )
     except LLMUnavailable:
+        audit(
+            db,
+            event_type="chat.ask",
+            result=RESULT_FAILURE,
+            user_id=current_user.id,
+            metadata={"reason": "model_unavailable"},
+        )
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE,
             "The assistant is not available right now. Please try again.",
@@ -106,13 +114,22 @@ def ask(
     conversation.updated_at = now
     db.commit()
 
-    return AskResponse(
+    response = AskResponse(
         conversation_id=conversation.id,
         message_id=reply.id,
         answer=result.answer,
         grounded=result.grounded,
         sources=sources,
     )
+    audit(
+        db,
+        event_type="chat.ask",
+        user_id=current_user.id,
+        resource_type="conversation",
+        resource_id=conversation.id,
+        metadata={"grounded": result.grounded, "sources": len(sources)},
+    )
+    return response
 
 
 @router.get("/conversations", response_model=list[ConversationRead])

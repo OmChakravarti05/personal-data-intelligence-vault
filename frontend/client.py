@@ -120,3 +120,33 @@ def get_conversation(token: str, conversation_id: str) -> dict:
 
 def delete_conversation(token: str, conversation_id: str) -> None:
     request("DELETE", f"/chat/conversations/{conversation_id}", token=token)
+
+
+def list_audit_events(
+    token: str,
+    event_type: str | None = None,
+    result: str | None = None,
+    limit: int = 20,
+    offset: int = 0,
+) -> list[dict]:
+    params = {"limit": limit, "offset": offset}
+    if event_type:
+        params["event_type"] = event_type
+    if result:
+        params["result"] = result
+    return request("GET", "/audit", token=token, params=params).json()    
+
+def share_document(token: str, document_id: str, email: str) -> dict:
+    return request("POST", "/shares", token=token, json={"document_id": document_id, "email": email}).json()
+
+
+def list_shares(token: str, document_id: str) -> list[dict]:
+    return request("GET", f"/shares/document/{document_id}", token=token).json()
+
+
+def shared_with_me(token: str) -> list[dict]:
+    return request("GET", "/shares/with-me", token=token).json()
+
+
+def revoke_share(token: str, share_id: str) -> None:
+    request("DELETE", f"/shares/{share_id}", token=token)

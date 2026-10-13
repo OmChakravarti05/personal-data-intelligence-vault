@@ -20,3 +20,9 @@ app.include_router(chat.router)
 
 from app.api import stats
 app.include_router(stats.router)
+
+from app.api import audit_log
+app.include_router(audit_log.router)
+
+from app.api import shares
+app.include_router(shares.router)

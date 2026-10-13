@@ -36,6 +36,9 @@ def register(payload: UserCreate, db: Session = Depends(get_db)) -> User:
         db.rollback()
         raise HTTPException(status.HTTP_409_CONFLICT, "Email already registered")
     db.refresh(user)
+
+    db.refresh(user)
+    audit(db, event_type="auth.register", user_id=user.id, resource_type="user", resource_id=user.id)
     return user
 
 
@@ -48,19 +51,31 @@ def login(
     user = db.scalar(select(User).where(User.email == form.username.lower()))
     password_ok = verify_password(
         form.password, user.hashed_password if user else _DUMMY_HASH
+   
     )
     if user is None or not password_ok or not user.is_active:
+        audit(
+            db,
+            event_type="auth.login",
+            result=RESULT_FAILURE,
+            user_id=user.id if user else None,
+            metadata={"reason": "bad_credentials"},
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    audit(db, event_type="auth.login", user_id=user.id)
     return Token(
         access_token=create_access_token(user.id),
         expires_in=settings.access_token_expire_minutes * 60,
     )
+    
 
 
 @router.get("/me", response_model=UserRead)
 def read_me(current_user: User = Depends(get_current_user)) -> User:
     return current_user
+
+from app.services.audit import RESULT_FAILURE, audit
