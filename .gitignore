@@ -11,3 +11,6 @@ uploads/
 *.dump
 *.sql
 .vscode/
+.coverage
+htmlcov/
+.streamlit/secrets.toml
