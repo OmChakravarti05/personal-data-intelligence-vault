@@ -3,7 +3,9 @@ import binascii
 from pathlib import Path
 from urllib.parse import quote_plus
 
-from pydantic import field_validator, model_validator
+from typing import Literal
+
+from pydantic import SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # backend/app/core/config.py -> parents[3] is the project root
@@ -51,6 +53,10 @@ class Settings(BaseSettings):
     ollama_base_url: str = "http://localhost:11434"
     llm_temperature: float = 0.1
     llm_timeout_seconds: int = 120
+    # "ollama" keeps everything local. "groq" sends questions and retrieved passages to Groq.
+    llm_provider: Literal["ollama", "groq"] = "ollama"
+    groq_api_key: SecretStr | None = None
+    groq_model: str = "openai/gpt-oss-20b"
 
     @field_validator("jwt_secret_key")
     @classmethod
