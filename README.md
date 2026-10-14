@@ -18,6 +18,29 @@ Everything runs on your own computer. By default, your documents and questions n
 | **Sharing** | Share a document with another user by email. They can ask questions about it but cannot download, change or delete it. You can take access back at any time. |
 | **Activity log** | A record of important actions (sign-in, upload, delete, share). It never stores your document text or your questions. |
 
+## Screenshots
+
+All screenshots use made-up demo data.
+
+**Overview** shows counts of documents, searchable text pieces and private-data findings.
+
+![Overview](docs/screenshots/01-overview.png)
+
+**Files** lists uploaded documents and whether each one is ready to search.
+
+![Files](docs/screenshots/02-files-pii.png)
+
+**Audit Log** records important actions. It never stores your document text or your questions.
+
+![Audit Log](docs/screenshots/04-audit-log.png)
+
+**Sharing** lets you share a document read-only with another user by email.
+
+![Sharing](docs/screenshots/05-sharing.png)
+
+**Settings** shows your account and tells you whether answers use a local model or an outside service.
+
+![Settings](docs/screenshots/06-settings.png)
 ## How it works (simple version)
 
 1. **You upload a file.** The app checks it is a real, allowed file type, then encrypts and stores it.
