@@ -11,6 +11,43 @@ services:
       - "127.0.0.1:${POSTGRES_PORT}:5432"
     volumes:
       - vault_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    container_name: vault_backend
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+      STORAGE_DIR: /data/storage
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - vault_storage:/data/storage
+
+  frontend:
+    build: ./frontend
+    container_name: vault_frontend
+    restart: unless-stopped
+    environment:
+      VAULT_API_URL: http://backend:8000
+    depends_on:
+      - backend
+    ports:
+      - "127.0.0.1:8501:8501"
 
 volumes:
   vault_pgdata:
+  vault_storage:
